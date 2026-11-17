@@ -5,6 +5,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import statCard from '@/components/statCard.vue';
 import baseTable from '@/components/baseTable.vue';
 import { getClubPageApi, addClubApi, updateClubApi, deleteClubApi } from '@/api/club';
+import { useImageUpload } from '@/hooks/useImageUpload';
 import { useTable } from '@/hooks/useTable';
 
 const searchParams = reactive({
@@ -77,9 +78,26 @@ const clubForm = reactive({
 const rules = reactive<FormRules>({
     clubName: [{ required: true, message: '请输入社团名称', trigger: 'blur' }],
     description: [{ required: true, message: '请输入社团描述', trigger: 'blur' }],
-    avatar: [{ required: true, message: '请输入社团头像网址', trigger: 'blur' }],
+    avatar: [{ required: true, message: '请上传社团头像', trigger: 'change' }],
     category: [{ required: true, message: '请选择社团类别', trigger: 'change' }]
 })
+
+// 社团头像上传（20MB 上限），关闭弹窗时清理未保存的图片
+const {
+    uploading,
+    beforeUpload: beforeAvatarUpload,
+    httpRequest: handleUploadAvatar,
+    confirmUploaded,
+    discardUploaded
+} = useImageUpload((url) => {
+    clubForm.avatar = url
+    formRef.value?.validateField('avatar').catch(() => { })
+})
+
+// 弹窗关闭（取消/右上角关闭）时清理本次上传但未保存的图片
+const handleDialogClosed = () => {
+    void discardUploaded()
+}
 
 // 处理添加社团
 const handleAddClub = () => {
@@ -125,6 +143,8 @@ const submitForm = async (formEl: FormInstance | undefined) => {
                 const res: any = await apiCall(clubForm)
                 
                 if (res.code === 200) {
+                    // 头像已被保存，取消待清理状态
+                    confirmUploaded()
                     ElMessage.success(`${isEdit.value ? '修改' : '添加'}成功`)
                     dialogVisible.value = false
                     loadData() // 刷新列表
@@ -241,7 +261,7 @@ const handleDelete = async (row: any) => {
     </div>
 
     <!-- 添加/编辑社团弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px">
+    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="500px" @closed="handleDialogClosed">
         <el-form ref="formRef" :model="clubForm" :rules="rules" label-width="100px">
             <el-form-item label="社团名称" prop="clubName">
                 <el-input v-model="clubForm.clubName" placeholder="请输入社团名称"></el-input>
@@ -250,10 +270,21 @@ const handleDelete = async (row: any) => {
                 <el-input v-model="clubForm.description" type="textarea" :rows="3" placeholder="请输入社团描述"></el-input>
             </el-form-item>
             <el-form-item label="社团头像" prop="avatar">
-                <el-input v-model="clubForm.avatar" placeholder="请输入社团头像网址"></el-input>
-                <div v-if="clubForm.avatar" class="avatar-preview mt-2">
-                    <el-image :src="clubForm.avatar" style="width: 100px; height: 100px" fit="cover"></el-image>
-                </div>
+                <el-upload
+                    class="avatar-uploader"
+                    :show-file-list="false"
+                    :http-request="handleUploadAvatar"
+                    :before-upload="beforeAvatarUpload"
+                    :disabled="uploading"
+                    accept="image/jpeg,image/png,image/gif,image/webp,image/bmp"
+                >
+                    <img v-if="clubForm.avatar" :src="clubForm.avatar" class="avatar-upload-img" alt="社团头像" />
+                    <div v-else class="avatar-upload-holder">
+                        <el-icon><Plus /></el-icon>
+                        <span>点击上传</span>
+                    </div>
+                </el-upload>
+                <div class="el-upload__tip">支持 jpg / png / gif / webp，大小不超过 20MB</div>
             </el-form-item>
             <el-form-item label="社团类别" prop="category">
                 <el-select v-model="clubForm.category" placeholder="请选择社团类别" style="width: 100%">
@@ -303,6 +334,46 @@ const handleDelete = async (row: any) => {
     border-radius: 4px;
     overflow: hidden;
     border: 1px solid #dcdfe6;
+}
+
+.avatar-uploader {
+    :deep(.el-upload) {
+        width: 100px;
+        height: 100px;
+        border: 1px dashed #dcdfe6;
+        border-radius: 8px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #f6f6fb;
+        transition: border-color 0.2s;
+        cursor: pointer;
+
+        &:hover {
+            border-color: #0058bb;
+        }
+    }
+
+    .avatar-upload-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+
+    .avatar-upload-holder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #8c939d;
+
+        .el-icon {
+            font-size: 24px;
+        }
+    }
 }
 
 

@@ -156,21 +156,28 @@
                     <div class="card-header">
                         <span class="header-title">编辑资料</span>
                         <div class="header-actions">
-                            <el-button @click="isEditing = false">返回</el-button>
+                            <el-button @click="handleCancelEdit">返回</el-button>
                             <el-button type="primary" @click="handleSave">保存</el-button>
                         </div>
                     </div>
                 </template>
                 <el-form :model="editForm" label-width="120px" class="edit-form">
-                    <el-form-item label="头像地址">
-                        <el-input v-model="editForm.headUrl" placeholder="请输入头像链接" style="margin-bottom: 12px;" />
-                        <el-image 
-                            v-if="editForm.headUrl"
-                            :src="editForm.headUrl" 
-                            fit="cover" 
-                            :preview-src-list="[editForm.headUrl]"
-                            style="width: 120px; height: 120px; border-radius: 8px; object-fit: cover;"
-                        />
+                    <el-form-item label="头像" prop="headUrl">
+                        <el-upload
+                            class="avatar-uploader"
+                            :show-file-list="false"
+                            :http-request="handleUploadAvatar"
+                            :before-upload="beforeAvatarUpload"
+                            :disabled="uploading"
+                            accept="image/jpeg,image/png,image/gif,image/webp,image/bmp"
+                        >
+                            <img v-if="editForm.headUrl" :src="editForm.headUrl" class="avatar-upload-img" alt="头像" />
+                            <div v-else class="avatar-upload-holder">
+                                <el-icon><Plus /></el-icon>
+                                <span>点击上传</span>
+                            </div>
+                        </el-upload>
+                        <div class="el-upload__tip">支持 jpg / png / gif / webp，大小不超过 20MB</div>
                     </el-form-item>
                     <el-form-item label="学号">
                         <el-input v-model="editForm.code" placeholder="请输入学号" />
@@ -218,10 +225,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, } from 'vue'
+import { ref, onBeforeUnmount, } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage } from 'element-plus'
 import { getUserInfoApi, updateUserApi, updatePasswordApi } from '@/api/user'
+import { useImageUpload } from '@/hooks/useImageUpload'
 import {
     Edit,
     Setting,
@@ -236,7 +244,8 @@ import {
     Management,
     Checked,
     DocumentAdd,
-    Key
+    Key,
+    Plus
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user';
 import { useRouter } from 'vue-router';
@@ -272,16 +281,38 @@ const { userInfo } = storeToRefs(userStore)
 console.log(userInfo.value);
 
 const isEditing = ref(false)
+// 注意：不能把 password 放进提交对象，updateById 会用空串覆盖数据库中的密码哈希
 const editForm = ref({
     id: 0,
     headUrl: '',
     code: '',
-    password: '',
     name: '',
     college: '',
     major: '',
     phone: '',
     description: ''
+})
+
+// 头像上传（20MB 上限），放弃编辑时自动清理未保存的图片
+const {
+    uploading,
+    beforeUpload: beforeAvatarUpload,
+    httpRequest: handleUploadAvatar,
+    confirmUploaded,
+    discardUploaded
+} = useImageUpload((url) => {
+    editForm.value.headUrl = url
+})
+
+// 返回：放弃本次编辑，清理已上传但未保存的图片
+const handleCancelEdit = async () => {
+    await discardUploaded()
+    isEditing.value = false
+}
+
+// 页面离开（切路由等）时同样清理
+onBeforeUnmount(() => {
+    void discardUploaded()
 })
 
 const handleEdit = async () => {
@@ -293,7 +324,6 @@ const handleEdit = async () => {
                 id: data.id,
                 headUrl: data.headUrl || data.avatar || '',
                 code: data.code || '',
-                password: data.password || '',
                 name: data.name || '',
                 college: data.college || '',
                 major: data.major || '',
@@ -313,6 +343,11 @@ const handleSave = async () => {
     try {
         const res = await updateUserApi(editForm.value)
         if (res.code === 200) {
+            // 图片已被保存，取消待清理状态
+            confirmUploaded()
+            // 同步本地用户状态，避免返回个人中心后头像还是旧图
+            userInfo.value.avatar = editForm.value.headUrl
+            sessionStorage.setItem('avatar', editForm.value.headUrl)
             ElMessage.success('保存成功')
             isEditing.value = false
         } else {
@@ -772,5 +807,45 @@ function getRealImageUrl(url: string) {
     padding: 24px 0;
     max-width: 600px;
     margin: 0 auto;
+}
+
+.avatar-uploader {
+    :deep(.el-upload) {
+        width: 120px;
+        height: 120px;
+        border: 1px dashed #dcdfe6;
+        border-radius: 8px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #f6f6fb;
+        transition: border-color 0.2s;
+        cursor: pointer;
+
+        &:hover {
+            border-color: #0058bb;
+        }
+    }
+
+    .avatar-upload-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+
+    .avatar-upload-holder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #8c939d;
+
+        .el-icon {
+            font-size: 24px;
+        }
+    }
 }
 </style>
