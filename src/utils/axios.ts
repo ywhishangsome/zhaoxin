@@ -1,9 +1,10 @@
 import axios, { type InternalAxiosRequestConfig, type AxiosInstance, type AxiosError, type AxiosResponse } from 'axios'
 import { ElNotification } from 'element-plus'
 import router from '@/router'
+import { useUserStore } from '@/store/user'
 
 const service: AxiosInstance = axios.create({
-    baseURL: 'http://localhost:8800',
+    baseURL: '', // 移除硬编码的本地地址，使用相对路径触发代理
     withCredentials: true, // 带凭证请求
     timeout: 5000
 })
@@ -47,6 +48,8 @@ service.interceptors.response.use((response: AxiosResponse) => {
             type: 'error',
         })
         if (response.status === 401) {
+            const userStore = useUserStore()
+            userStore.logout()
             router.push('/login')
         }
     } else {
@@ -56,6 +59,8 @@ service.interceptors.response.use((response: AxiosResponse) => {
                 message: '登录已过期，请重新登录',
                 type: 'error',
             })
+            const userStore = useUserStore()
+            userStore.logout()
             router.push('/login')
             return Promise.reject(new Error('Unauthorized'))
         }
@@ -68,6 +73,8 @@ service.interceptors.response.use((response: AxiosResponse) => {
             message: '登录已过期，请重新登录',
             type: 'error',
         })
+        const userStore = useUserStore()
+        userStore.logout()
         router.push('/login')
     } else {
         ElNotification({

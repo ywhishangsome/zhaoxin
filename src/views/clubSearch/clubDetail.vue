@@ -1,3 +1,4 @@
+
 <template>
 
     <el-dialog :model-value="dialogVisible" :show-close="true" width="680px" class="custom-dialog" align-center>
@@ -53,31 +54,30 @@
                 </el-card>
 
                 <!-- Core Members Section -->
-                <!-- <div class="content-section members-section">
+                <div class="content-section members-section" v-if="members.length > 0">
                     <div class="section-header mb">
                         <span class="dot"></span>
-                        <el-text bold size="small" class="uppercase">核心成员信息</el-text>
+                        <el-text bold size="small" class="uppercase">管理人员</el-text>
                     </div>
 
                     <el-row :gutter="16">
-                        <el-col v-for="member in members" :key="member.name" :xs="24" :sm="8">
+                        <el-col v-for="member in members" :key="member.id" :xs="24" :sm="8">
                             <el-card shadow="hover" class="member-card" :body-style="{ padding: '12px' }">
                                 <div class="member-inner">
-                                    <el-avatar :src="member.avatar" shape="square" :size="48" />
+                                    <el-avatar :src="getRealImageUrl(member.headUrl)" shape="square" :size="48" />
                                     <div class="member-info">
                                         <el-text bold size="small" class="member-name">{{ member.name }}</el-text>
-                                        <el-text size="small" type="secondary" class="member-role">{{ member.role
-                                            }}</el-text>
+                                        <el-text size="small" type="secondary" class="member-role">{{ getRoleLabel(member.roleType) }}</el-text>
                                     </div>
                                 </div>
                             </el-card>
                         </el-col>
                     </el-row>
-                </div> -->
+                </div>
 
                 <!-- Action -->
                 <div class="action-footer">
-                    <el-button type="primary" class="submit-btn" size="large" round @click="signUpVisible = true">
+                    <el-button type="primary" class="submit-btn" size="large" round @click="handleSign">
                         立即报名
                     </el-button>
                 </div>
@@ -85,16 +85,48 @@
         </div>
     </el-dialog>
 
-    <SignUpDialog :dialogVisible="signUpVisible" :clubId="currentClub.id" @close="signUpVisible = false" />
+    <!-- Sign Up Dialog -->
+    <el-dialog v-model="signDialogVisible" title="报名申请" width="400px" destroy-on-close class="sign-dialog" align-center :show-close="true">
+        <template #header="{ titleId, titleClass }">
+            <div class="sign-dialog-header">
+                <h2 :id="titleId" :class="titleClass" style="text-align: center; margin: 0; font-size: 24px; font-weight: bold; color: #000;">报名申请</h2>
+            </div>
+        </template>
+        <el-form :model="signForm" :rules="signRules" ref="signFormRef" label-position="top">
+            <el-form-item prop="apply_note">
+                <template #label>
+                    <span style="font-size: 16px; color: #5a5b60;">
+                        <el-icon style="vertical-align: middle; margin-right: 4px;"><ChatLineRound /></el-icon>
+                        简单描述一下你自己...
+                    </span>
+                </template>
+                <el-input 
+                    v-model="signForm.apply_note" 
+                    type="textarea" 
+                    :rows="5" 
+                    placeholder="简述你想要加入的原因..." 
+                    style="font-size: 14px;"
+                />
+            </el-form-item>
+        </el-form>
+        <template #footer>
+            <div style="text-align: center; margin-top: 10px;">
+                <el-button type="primary" size="large" @click="submitSign" style="width: 100%; border-radius: 12px; font-weight: bold; font-size: 16px; background-color: #0058bb;">
+                    <el-icon style="margin-right: 8px;"><Position /></el-icon> 提交报名
+                </el-button>
+            </div>
+        </template>
+    </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { getClubByIdApi } from '@/api/club';
+import { getClubByIdApi, getClubMemberInfoApi } from '@/api/club';
+import { signUpApi } from '@/api/sign';
 import { onMounted, ref, watch } from 'vue';
 import { getLabel } from '@/utils/ClubCateMap';
-import SignUpDialog from './signUpDialog.vue';
-
-const signUpVisible = ref(false);
+import { ElMessage } from 'element-plus';
+import { useUserStore } from '@/store/user';
+import { User, Close, Position, ChatLineRound } from '@element-plus/icons-vue';
 interface ClubDetail {
     id: number
     createTime: string
@@ -111,12 +143,25 @@ interface ClubDetail {
 }
 const props = defineProps(['dialogVisible', 'id']);
 const currentClub = ref<ClubDetail>({} as ClubDetail)
+const members = ref<any[]>([])
+
 const getcurrentClub = async () => {
     if (!props.id) return;
     try {
         const res = await getClubByIdApi(props.id)
         currentClub.value = res.data
         console.log("111", currentClub.value);
+
+        // Fetch club members
+        const membersRes = await getClubMemberInfoApi(props.id);
+        if (membersRes.code === 200 && membersRes.data) {
+            // Sort by roleType (1: 社长, 2: 管理员, 3: 成员) and take top 3
+            members.value = membersRes.data
+                .sort((a: any, b: any) => Number(a.roleType) - Number(b.roleType))
+                .slice(0, 3);
+        } else {
+            members.value = [];
+        }
     } catch (err) {
         console.log("获取社团详情失败", err)
     }
@@ -137,6 +182,49 @@ const handleClose = () => {
     currentClub.value = {} as ClubDetail;
 };
 
+const userStore = useUserStore();
+const signDialogVisible = ref(false);
+const signFormRef = ref();
+const signForm = ref({
+    apply_note: ''
+});
+
+const signRules = {
+    apply_note: [
+        { required: true, message: '请简单描述一下你自己', trigger: 'blur' },
+        { max: 200, message: '最多200个字符', trigger: 'blur' }
+    ]
+};
+
+const handleSign = () => {
+    signForm.value.apply_note = '';
+    signDialogVisible.value = true;
+};
+
+const submitSign = async () => {
+    if (!signFormRef.value) return;
+    await signFormRef.value.validate(async (valid: boolean) => {
+        if (valid) {
+            try {
+                const res = await signUpApi({
+                    clubId: currentClub.value.id,
+                    userId: userStore.userInfo.id,
+                    apply_note: signForm.value.apply_note
+                });
+                if (res.code === 200) {
+                    ElMessage.success('报名成功！');
+                    signDialogVisible.value = false;
+                } else {
+                    ElMessage.error(res.message || '报名失败');
+                }
+            } catch (err) {
+                console.error("报名失败", err);
+                ElMessage.error('报名失败');
+            }
+        }
+    });
+};
+
 // 提取真实图片地址
 function getRealImageUrl(url: string) {
     if (!url) return ''
@@ -144,19 +232,14 @@ function getRealImageUrl(url: string) {
     const params = new URLSearchParams(url.split('?')[1])
     return params.get('mediaurl') || url
 }
-const members = [{
-    name: '张明远',
-    role: '社长 / President',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCYENJ5sPw1fhqsb6dxAKVXBAy7uEyU6XcIfRpLMxRtripNye1-3sVZRbdmnNLwNNnomx_om3iMoBHXPTyCip04UCc64tIh9sfClehHMaSPBL2DB4FdXCXpvUEFJlSVtUTAo4Qk_fno-PFWnsbhBDfUx5IF-3GbjvxfxZsuMzmTET0bTHvdxovTkVnb6oEBaZoULho4tn57m5df6Dnt7e6m9Uq-H8mvLjYeY1x--NbQpVzQe3aPeVrtkV_-jJOVRUb0bEtuzvV-viE'
-}, {
-    name: '李思涵',
-    role: '副社长 / VP',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBcwkoTf86ITnoVZdD6M3hFxFIFSJHRqdClVWfqRg2f1dpGKIIHigdhgpC9nOlXsyTJj0LpEvRr695yKMwDz08LdhFBQ6xFxwvOIRoKtbEeNhpdTn4T16t-jFDIKUUzWOSbxp2GKMdtMaoFD_jT7SEHvPv0Hc7ipLKsW4QG7M4VtzNVzqMRPgas_xn8_WU20oJBSQgrKJ7j_PT2-j8DRnnm6BozBNNtXUSv8PBNrI-AiamZ2Vkh1VlmYSFSsf9jBCZstpJp_sijEgI'
-}, {
-    name: '王嘉禾',
-    role: '技术总监 / Tech',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB7KkMIp6UuXiMgdmfCvypWnZW-umTz4sM_jXO1kU_ovRVMjOyCCH-vjotEI4YNl1XUBf3VZ1ZfFeypHEn1mBuSgwL1KzFM62nglEgrnBPpXfM4Q4avuDpBhiRfLG6GdpNUbwfok9PgNKSywc3BiNyhwJJjRw_DsyXYwjMeR4J3kSc-xqnqifl3kcewA7Ny_xlJj2LlSYevck4ZpYGnu7UEpZa3ajsP6nqq05KKMfk5Au6drjBw-AFLzNWdoVMD-aRmtufHewM98gY'
-}];
+const getRoleLabel = (roleType: string | number) => {
+    switch (Number(roleType)) {
+        case 1: return '社长';
+        case 2: return '管理员';
+        case 3: return '成员';
+        default: return '未知';
+    }
+};
 </script>
 
 <style lang="less">
@@ -174,6 +257,13 @@ const members = [{
     .el-dialog__body {
         padding: 0 !important;
         background-color: #ffffff;
+    }
+}
+
+.sign-dialog {
+    border-radius: 24px !important;
+    .el-dialog__header {
+        padding-top: 30px;
     }
 }
 

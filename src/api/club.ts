@@ -11,8 +11,14 @@ const Api = {
     deleteClubUser: '/clubsystem/club-user/deleteClubUser/',
     addClub: '/clubsystem/club/save',
     updateClub: '/clubsystem/club/update',
-    deleteClub: '/clubsystem/club/remove/'
+    deleteClub: '/clubsystem/club/remove/',
+    clubMemberInfo: '/clubsystem/club/getClubMemberInfo/'
 } as const;
+
+// 获取社团成员信息
+function getClubMemberInfoApi(clubId: number | string) {
+    return get(`${Api.clubMemberInfo}${clubId}`);
+}
 
 // 添加社团
 function addClubApi(data: any) {
@@ -74,4 +80,4 @@ function getClubPageApi(page: number, limit: number, params: any) {
         return get(`${Api.clubPage}/${page}/${limit}`);
     }
 }
-export { getClubListApi, getClubByIdApi, getClubPageApi, getMyClubListApi, getClubUserListApi, addClubUserApi, deleteClubUserApi, addClubApi, updateClubApi, deleteClubApi };
+export { getClubListApi, getClubByIdApi, getClubPageApi, getMyClubListApi, getClubUserListApi, addClubUserApi, deleteClubUserApi, addClubApi, updateClubApi, deleteClubApi, getClubMemberInfoApi };

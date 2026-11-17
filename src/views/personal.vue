@@ -162,15 +162,15 @@
                     </div>
                 </template>
                 <el-form :model="editForm" label-width="120px" class="edit-form">
-                    <el-form-item label="头像">
-                        <el-input v-model="editForm.headUrl" placeholder="请输入头像url" />
+                    <el-form-item label="头像地址">
+                        <el-input v-model="editForm.headUrl" placeholder="请输入头像链接" style="margin-bottom: 12px;" />
                         <el-image 
+                            v-if="editForm.headUrl"
                             :src="editForm.headUrl" 
                             fit="cover" 
                             :preview-src-list="[editForm.headUrl]"
                             style="width: 120px; height: 120px; border-radius: 8px; object-fit: cover;"
                         />
-                        <!-- <el-image :src="editForm.headUrl" fit="fill" :preview-src-list="[editForm.headUrl]" /> -->
                     </el-form-item>
                     <el-form-item label="学号">
                         <el-input v-model="editForm.code" placeholder="请输入学号" />
@@ -291,7 +291,7 @@ const handleEdit = async () => {
             const data = res.data
             editForm.value = {
                 id: data.id,
-                headUrl: data.headUrl || '',
+                headUrl: data.headUrl || data.avatar || '',
                 code: data.code || '',
                 password: data.password || '',
                 name: data.name || '',
