@@ -23,7 +23,7 @@
                 <div class="profile-actions">
                     <el-button type="primary" :icon="Edit" class="action-btn" @click="handleEdit">编辑资料</el-button>
                     <el-button type="warning" :icon="Key" class="action-btn" @click="isPasswordDialogVisible = true">修改密码</el-button>
-                    <el-button class="action-btn share-btn" :icon="Star">分享名片</el-button>
+                    <el-button class="action-btn share-btn" :icon="Star" @click="goToMyClubs">我的社团</el-button>
                 </div>
             </div>
         </el-card>
@@ -37,22 +37,52 @@
                             <span class="header-title">校园日程</span>
                             <div class="header-actions">
                                 <el-button-group>
-                                    <el-button type="primary" size="small">月</el-button>
-                                    <el-button size="small">周</el-button>
+                                    <el-button :type="viewMode === 'month' ? 'primary' : ''" size="small"
+                                        @click="switchView('month')">月</el-button>
+                                    <el-button :type="viewMode === 'week' ? 'primary' : ''" size="small"
+                                        @click="switchView('week')">周</el-button>
                                 </el-button-group>
                             </div>
                         </div>
                     </template>
-                    <el-calendar v-model="calendarDate">
+
+                    <!-- 月视图 -->
+                    <el-calendar v-if="viewMode === 'month'" v-model="calendarDate">
                         <template #date-cell="{ data }">
                             <div class="calendar-cell">
                                 <span class="date-num">{{ data.day.split('-').slice(-1)[0] }}</span>
-                                <div v-if="getEvent(data.day)" class="event-badge" :class="getEvent(data.day).type">
-                                    {{ getEvent(data.day).title }}
+                                <div v-if="getEvent(data.day)" class="event-badge" :class="getEvent(data.day)?.type">
+                                    {{ getEvent(data.day)?.title }}
                                 </div>
                             </div>
                         </template>
                     </el-calendar>
+
+                    <!-- 周视图 -->
+                    <div v-else class="week-view">
+                        <div class="week-toolbar">
+                            <span class="week-range">{{ weekRangeText }}</span>
+                            <el-button-group>
+                                <el-button size="small" :icon="ArrowLeft" @click="shiftWeek(-1)" />
+                                <el-button size="small" @click="goCurrentWeek">本周</el-button>
+                                <el-button size="small" :icon="ArrowRight" @click="shiftWeek(1)" />
+                            </el-button-group>
+                        </div>
+                        <div class="week-grid">
+                            <div v-for="day in weekDays" :key="day.key" class="week-cell"
+                                :class="{ today: day.isToday }">
+                                <div class="week-cell-header">
+                                    <span class="weekday">{{ day.weekday }}</span>
+                                    <span class="date-num">{{ day.dayNum }}</span>
+                                </div>
+                                <div v-if="day.event" class="event-badge" :class="day.event?.type">
+                                    {{ day.event?.title }}
+                                </div>
+                                <div v-else class="week-empty">—</div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="calendar-legend">
                         <div class="legend-item"><span class="dot primary"></span> 社团活动</div>
                         <div class="legend-item"><span class="dot error"></span> 招新截止</div>
@@ -225,7 +255,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeUnmount, } from 'vue'
+import { ref, computed, onBeforeUnmount, } from 'vue'
 import { storeToRefs } from 'pinia'
 import { ElMessage } from 'element-plus'
 import { getUserInfoApi, updateUserApi, updatePasswordApi } from '@/api/user'
@@ -245,23 +275,107 @@ import {
     Checked,
     DocumentAdd,
     Key,
-    Plus
+    Plus,
+    ArrowLeft
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store/user';
 import { useRouter } from 'vue-router';
 
 const router = useRouter()
-const calendarDate = ref(new Date(2023, 10, 8))
+// 默认定位到今天（周视图显示本周，月视图显示本月）
+const calendarDate = ref(new Date())
 const isDarkMode = ref(false)
 
-const events = {
-    '2023-11-03': { title: '技术宣讲会', type: 'primary' },
-    '2023-11-08': { title: '报名截止', type: 'error' },
-    '2023-11-15': { title: '面试 @ 14:00', type: 'tertiary' }
+// 跳转我的社团
+const goToMyClubs = () => {
+    router.push('/memberManage')
 }
+
+// 统一日期 key 格式，与 events 的 key 保持一致
+const formatDateKey = (date: Date) => {
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${date.getFullYear()}-${month}-${day}`
+}
+
+// 演示日程：以今天为基准生成，保证打开页面就能看到本周 / 下周的安排
+const createDemoEvents = () => {
+    const shiftKey = (offset: number) => {
+        const date = new Date()
+        date.setHours(0, 0, 0, 0)
+        date.setDate(date.getDate() + offset)
+        return formatDateKey(date)
+    }
+    return {
+        [shiftKey(0)]: { title: '技术宣讲会', type: 'primary' },
+        [shiftKey(2)]: { title: '报名截止', type: 'error' },
+        [shiftKey(7)]: { title: '面试 @ 14:00', type: 'tertiary' }
+    }
+}
+
+const events = createDemoEvents()
 
 const getEvent = (day: string) => {
     return events[day as keyof typeof events]
+}
+
+// ===== 校园日程：月 / 周视图切换（默认周视图）=====
+const viewMode = ref<'month' | 'week'>('week')
+
+const switchView = (mode: 'month' | 'week') => {
+    viewMode.value = mode
+}
+
+// 取所在周的周一（周日算上一周的末尾）
+const getWeekStart = (date: Date) => {
+    const start = new Date(date)
+    start.setHours(0, 0, 0, 0)
+    const weekday = start.getDay()
+    const diff = weekday === 0 ? -6 : 1 - weekday
+    start.setDate(start.getDate() + diff)
+    return start
+}
+
+const weekLabels = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+
+const weekDays = computed(() => {
+    const start = getWeekStart(calendarDate.value)
+    const todayKey = formatDateKey(new Date())
+    return weekLabels.map((label, index) => {
+        const date = new Date(start)
+        date.setDate(start.getDate() + index)
+        const key = formatDateKey(date)
+        return {
+            key,
+            weekday: label,
+            dayNum: date.getDate(),
+            isToday: key === todayKey,
+            event: getEvent(key)
+        }
+    })
+})
+
+const weekRangeText = computed(() => {
+    const start = getWeekStart(calendarDate.value)
+    const end = new Date(start)
+    end.setDate(start.getDate() + 6)
+    const startText = `${start.getFullYear()}年${start.getMonth() + 1}月${start.getDate()}日`
+    const endText = start.getFullYear() === end.getFullYear()
+        ? `${end.getMonth() + 1}月${end.getDate()}日`
+        : `${end.getFullYear()}年${end.getMonth() + 1}月${end.getDate()}日`
+    return `${startText} - ${endText}`
+})
+
+// 前后翻周
+const shiftWeek = (delta: number) => {
+    const date = new Date(calendarDate.value)
+    date.setDate(date.getDate() + delta * 7)
+    calendarDate.value = date
+}
+
+// 回到本周
+const goCurrentWeek = () => {
+    calendarDate.value = new Date()
 }
 
 const managementLinks = [
@@ -658,6 +772,79 @@ function getRealImageUrl(url: string) {
             &.tertiary {
                 background-color: #4c5e66;
             }
+        }
+    }
+}
+
+.week-view {
+    padding: 16px 24px 8px;
+    overflow-x: auto;
+
+    .week-toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+        gap: 12px;
+
+        .week-range {
+            font-size: 14px;
+            font-weight: 700;
+            color: #2d2f33;
+        }
+    }
+
+    .week-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(84px, 1fr));
+        gap: 8px;
+    }
+
+    .week-cell {
+        border: 1px solid #e7e8ee;
+        border-radius: 8px;
+        padding: 8px;
+        min-height: 132px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        background-color: #fff;
+        transition: border-color 0.2s;
+
+        &:hover {
+            border-color: rgba(0, 88, 187, 0.4);
+        }
+
+        &.today {
+            border-color: #0058bb;
+            background-color: rgba(0, 88, 187, 0.04);
+        }
+
+        .week-cell-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+
+            .weekday {
+                font-size: 12px;
+                font-weight: 600;
+                color: #5a5b60;
+            }
+
+            .date-num {
+                font-size: 16px;
+                font-weight: 700;
+                color: #2d2f33;
+            }
+        }
+
+        .week-empty {
+            font-size: 12px;
+            color: #c0c4cc;
+        }
+
+        .event-badge {
+            margin-top: 0;
         }
     }
 }

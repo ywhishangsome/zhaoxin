@@ -29,7 +29,7 @@ export const menuList = [
         title: "我的社团",
         path: "/memberManage",
         icon: "Star",
-        roles: ["CLUBADMIN"],
+        roles: ["STUDENT", "CLUBADMIN"],
     },
     {
         title: "社团管理",

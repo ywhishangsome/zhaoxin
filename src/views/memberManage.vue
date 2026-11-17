@@ -17,7 +17,10 @@
             <el-skeleton animated :rows="5" />
         </div>
         <div v-else-if="myClubs.length === 0" class="empty-state">
-            <el-empty description="暂无社团记录" />
+            <el-empty description="你还没有加入任何社团">
+                <p class="empty-tip">加入社团后就能在这里看到你参与的社团啦</p>
+                <el-button type="primary" round @click="goToClubSearch">去社团浏览</el-button>
+            </el-empty>
         </div>
         <div v-else class="club-grid">
             <el-card shadow="hover" class="club-card" v-for="club in myClubs" :key="club.id">
@@ -111,6 +114,11 @@ const getRealImageUrl = (url: string) => {
 // 点击查看详情
 const goToManage = (id: number) => {
     router.push({ path: '/clubMembers', query: { id: id.toString() } }); 
+};
+
+// 没有社团时，引导去社团浏览页加入社团
+const goToClubSearch = () => {
+    router.push('/clubSearch');
 };
 
 onMounted(() => {
@@ -250,5 +258,16 @@ onMounted(() => {
 
 .loading-state, .empty-state {
     padding: 40px 0;
+}
+
+.empty-state {
+    background: #fff;
+    border-radius: 16px;
+
+    .empty-tip {
+        margin: 0 0 16px;
+        font-size: 14px;
+        color: #8c8e93;
+    }
 }
 </style>
